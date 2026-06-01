@@ -18,6 +18,8 @@
 
 <p>
   <a href="https://6661231.xyz"><img src="https://img.shields.io/badge/%F0%9F%9A%80%20%E4%B8%80%E9%94%AE%E5%BC%80%E9%80%9A%E4%BC%9A%E5%91%98-Super%20Grok%20%C2%B7%20ChatGPT%20Plus%20%C2%B7%20Claude%20Max-FF5A5F?style=for-the-badge" alt="一键开通 Super Grok / ChatGPT Plus / Claude Max" /></a>
+  &nbsp;
+  <img src="https://img.shields.io/badge/QQ%E7%BE%A4-1048143135-12B7F5?style=for-the-badge&logo=qq&logoColor=white" alt="QQ 交流群 1048143135" />
 </p>
 
 <p>
@@ -163,3 +165,10 @@ python _clash_verge.py ping                    # 控制面连通性
   逐个试节点找能过的。
 - **三窗口登录同一 outlook 报并发登录**：用 `mailbox_broker.py` 共享取码（每号只登一次）。
 - **缺 secret 连不上 Clash 控制面**：确认 External Controller 已开 API 且 `CLASH_SECRET` 正确。
+
+---
+
+## 7. 交流 / 支持
+
+- 💬 **QQ 交流群：`1048143135`**（使用问题、避坑、更新通知）
+- 💎 **开通官方会员**：[Super Grok / ChatGPT Plus / Claude Max → https://6661231.xyz](https://6661231.xyz)
