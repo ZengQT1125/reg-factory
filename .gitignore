@@ -34,3 +34,8 @@ stop_recording.py
 recordings/
 *.log
 claude_node_usage.txt
+
+# Gmail Android release/offline binary payloads
+gmail_android/offline/bluestacks/*
+!gmail_android/offline/bluestacks/.gitkeep
+gmail_android/dist/

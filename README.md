@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 # 🏭 reg-factory
 
@@ -184,6 +184,106 @@ python _clash_verge.py ping                    # 控制面连通性
 
 ---
 
+
+---
+
+## Gmail Android / Appium 本地注册包
+
+Gmail Android 模块位于 `gmail_android/`。它用于在本机 BlueStacks + Appium 环境里驱动 Gmail Android 注册流程，并把 Android 环境安装脚本一起打包，方便后续作为 GitHub Release 附件分发。
+
+安全边界：
+- 默认停在手机/SMS/CAPTCHA 或 Google 额外安全验证页，由人工完成。
+- `--resume-after-phone` 用于人工验证完成后续跑。
+- `--accept-terms` 只在操作者明确同意 Google Privacy and Terms 后使用。
+- `sms_provider.py` 只提供环境变量驱动的 provider 骨架，后续合并内部合规接码流程时复用；当前不默认接入 Gmail 安全验证自动化。
+
+### GitHub Release 安装包
+
+Release 上传建议：
+
+```text
+gmail-android-local-with-bluestacks.zip
+```
+
+包内结构：
+
+```text
+gmail_android/
+  gmail_register_local.py
+  appium_api.py
+  config.py
+  sms_provider.py
+  .env.example
+  requirements.txt
+  scripts/
+    install_all_windows.ps1
+    install_bluestacks.ps1
+    install_windows.ps1
+    start_appium.ps1
+    check_env.ps1
+    run_gmail_register.ps1
+  offline/
+    bluestacks/
+      BlueStacksInstaller_*.exe   # 可选；推荐固定版本安装器
+```
+
+当前脚本支持 BlueStacks 直接安装版：把固定版本 BlueStacks 安装器放入 `gmail_android/offline/bluestacks/`，用户解压后运行：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+cd gmail_android
+.\scripts\install_all_windows.ps1
+.\scripts\start_appium.ps1
+.\scripts\check_env.ps1
+```
+
+注意：如果包内 BlueStacks 安装器是 web/micro installer，目标电脑仍需要联网下载 BlueStacks 组件。完全离线发布时，请替换为官方 full/offline installer 后再打包。
+
+构建 GitHub Release zip：
+
+```powershell
+cd gmail_android
+.\scripts\build_release.ps1
+
+# 带固定版本 BlueStacks 安装器
+.\scripts\build_release.ps1 -BlueStacksInstaller C:\path\to\BlueStacksInstaller.exe
+```
+
+### Gmail Android 使用
+
+复制环境模板：
+
+```powershell
+cd gmail_android
+copy .env.example .env
+```
+
+关键变量也可写入仓库根目录 `.env`：
+
+```env
+APPIUM_SERVER=http://127.0.0.1:4723
+ANDROID_DEVICE=127.0.0.1:5675
+GMAIL_USERNAME_PREFIX=
+ACCEPT_TERMS=0
+SMS_PROJECT_ID_GMAIL=
+HERO_SMS_SERVICE_GMAIL=
+```
+
+运行：
+
+```powershell
+# 默认跑到手机/安全验证处停住
+python .\gmail_register_local.py
+
+# 人工完成手机验证后续跑
+python .\gmail_register_local.py --resume-after-phone
+
+# 明确同意条款后，让脚本继续点击 I agree / ACCEPT 并进入 Gmail
+python .\gmail_register_local.py --resume-after-phone --accept-terms
+
+# 也可以让脚本等待人工手机验证完成后自动继续
+python .\gmail_register_local.py --wait-phone-verification --accept-terms
+```
 ## 5. Codex 订阅授权 & 标准 token 上传
 
 注册拿到的是**网页 session**（无 `refresh_token`，下游中转易 401）。这一组流程把账号升级成
@@ -336,3 +436,5 @@ python upload_tokens.py grok       # 只传 Grok（webchat2api）
 **谢谢老板打赏，您的打赏是我更新的动力！！！**
 
 </div>
+
+
