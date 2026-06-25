@@ -33,7 +33,7 @@ def build_command(platform, args, account):
 
     if platform == "claude":
         cmd = [
-            sys.executable, "register.py",
+            sys.executable, "-u", "register.py",
             "--count", "1",
             "--concurrency", "1",
             "--timeout", timeout,
@@ -47,7 +47,7 @@ def build_command(platform, args, account):
 
     if platform == "chatgpt":
         cmd = [
-            sys.executable, "register_chatgpt.py",
+            sys.executable, "-u", "register_chatgpt.py",
             "--count", "1",
             "--concurrency", "1",
             "--timeout", timeout,
@@ -72,7 +72,7 @@ def build_command(platform, args, account):
 
     if platform == "grok":
         cmd = [
-            sys.executable, "register_grok.py",
+            sys.executable, "-u", "register_grok.py",
             "--count", "1",
             "--concurrency", "1",
             "--timeout", timeout,

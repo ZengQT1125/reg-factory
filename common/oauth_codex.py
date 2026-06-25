@@ -32,11 +32,21 @@ REDIRECT_URI = "http://localhost:1455/auth/callback"
 DEFAULT_CONCURRENCY = 10
 DEFAULT_PRIORITY = 1
 DEFAULT_RATE_MULTIPLIER = 1
-# 授权页可能出现的"同意/继续"按钮文案(多语言)
+# 授权页可能出现的"同意/继续"按钮文案(多语言：英/简中/繁中/日/马来)
+# 注：代理 IP 地区决定 OpenAI 界面语言(JP 节点→日文、HK/TW→繁中、MY→马来)，必须覆盖全，
+# 否则 data-dd-action-name/submit 选择器漏掉时，纯靠文案匹配会因缺语种而点不到、卡死。
 CONSENT_LABELS = [
     "Authorize", "Allow", "Continue", "Approve", "Yes", "Accept",
     "Continue with ChatGPT", "Log in with ChatGPT", "Authorize access",
-    "同意", "授权", "允许", "继续", "确认", "登录",
+    # 简中
+    "同意", "授权", "允许", "继续", "确认", "登录", "继续使用 ChatGPT",
+    # 繁中
+    "繼續", "授權", "允許", "確認", "登入", "繼續使用 ChatGPT",
+    # 日文
+    "続行", "許可", "許可する", "承認", "承認する", "認証", "同意する",
+    "続ける", "次へ", "はい", "ChatGPT で続行",
+    # 马来
+    "Teruskan", "Benarkan", "Sahkan", "Setuju",
 ]
 
 
@@ -562,6 +572,27 @@ async def drive_authorize(page, auth_url, timeout=120, debug_dump=None, account_
                 if cur_url != last_hb_url or stuck_rounds % 8 == 0:
                     print(f"  [authz] 等待中(轮{round_i}/卡{stuck_rounds}, 剩{left}s): {cur_url[:90]}")
                     last_hb_url = cur_url
+                # 卡住第 4 轮:dump 当前页可见按钮 + 截图,看清到底是什么页面/按钮没点到
+                # (chatgpt.com 促销弹窗遮挡 consent、未知语种按钮等都能在此现形)。
+                if stuck_rounds == 4:
+                    try:
+                        btns = []
+                        nb = await page.locator("button").count()
+                        for bi in range(min(nb, 12)):
+                            try:
+                                t = (await page.locator("button").nth(bi).inner_text()).strip()[:30]
+                                if t:
+                                    btns.append(t)
+                            except Exception:
+                                pass
+                        print(f"  [authz] 卡住页按钮: {btns}")
+                        import os as _os2
+                        _os2.makedirs("screenshots", exist_ok=True)
+                        shot = f"screenshots/codex_authz_stuck_{int(time.time())}.png"
+                        await page.screenshot(path=shot)
+                        print(f"  [authz] 截图: {shot}")
+                    except Exception as e:
+                        print(f"  [authz] dump 失败: {str(e)[:60]}")
                 if stuck_rounds and stuck_rounds % 8 == 0 and not on_consent:
                     print(f"  [authz] 连续 {stuck_rounds} 轮停在非 consent 页未推进，re-goto auth_url 破 churn...")
                     try:
