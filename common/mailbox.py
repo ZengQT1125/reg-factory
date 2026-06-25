@@ -24,25 +24,59 @@ DEFAULT_CLIENT_ID = "9e5f94bc-e8a4-4e73-b8be-63364c29d753"
 GRAPH_FOLDERS = ["inbox", "junkemail"]
 
 
-def _get_access_token(refresh_token, client_id=DEFAULT_CLIENT_ID, scope="https://graph.microsoft.com/Mail.Read"):
+def _switch_clash_node():
+    """切 Clash GLOBAL 到另一个随机具体节点，规避当前出口对 login.microsoftonline.com
+    的 TLS 抖动(SSLEOFError)。成功返回新节点名，失败/不可用返回 None。"""
     try:
-        resp = requests.post(
-            "https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
-            data={
-                "client_id": client_id or DEFAULT_CLIENT_ID,
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-                "scope": scope,
-            },
-            timeout=30,
-        )
-        if resp.status_code != 200:
-            print(f"  [mail] token refresh failed: {resp.status_code} {resp.text[:120]}")
+        from common import proxy_switch as ps
+        import random
+        cur = ps.current_node()
+        cands = [n for n in ps.concrete_nodes() if n != cur]
+        if not cands:
             return None
-        return resp.json().get("access_token")
+        pick = random.choice(cands)
+        ps.set_node(pick)
+        time.sleep(3)
+        print(f"  [mail] 切节点 {cur} -> {pick} 重试 token")
+        return pick
     except Exception as e:
-        print(f"  [mail] token error: {e}")
+        print(f"  [mail] 切节点失败(忽略): {str(e)[:60]}")
         return None
+
+
+def _get_access_token(refresh_token, client_id=DEFAULT_CLIENT_ID, scope="https://graph.microsoft.com/Mail.Read"):
+    # login.microsoftonline.com 经代理偶发 TLS 抖动(SSLEOFError)/连接重置，单发就失败会让
+    # 有 token 的号白白退回浏览器取码。重试 4 次：前两次短退避(多为瞬时抖动)，后两次先切
+    # Clash 节点再试(换出口绕开坏节点)。业务错误(非 200 JSON)不算抖动，直接返回不重试。
+    last_err = None
+    for attempt in range(4):
+        try:
+            resp = requests.post(
+                "https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
+                data={
+                    "client_id": client_id or DEFAULT_CLIENT_ID,
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                    "scope": scope,
+                },
+                timeout=30,
+            )
+            if resp.status_code != 200:
+                print(f"  [mail] token refresh failed: {resp.status_code} {resp.text[:120]}")
+                return None  # 业务错误(invalid_grant/scope 等)，重试无意义
+            return resp.json().get("access_token")
+        except (requests.ConnectionError, requests.Timeout) as e:
+            last_err = e
+            print(f"  [mail] token 连接抖动({attempt+1}/4): {str(e)[:80]}")
+            if attempt >= 2:
+                _switch_clash_node()  # 后两次先换节点再试
+            elif attempt < 3:
+                time.sleep(2 * (attempt + 1))
+        except Exception as e:
+            print(f"  [mail] token error: {e}")
+            return None
+    print(f"  [mail] token 重试用尽(4 次): {str(last_err)[:80] if last_err else ''}")
+    return None
 
 
 def fetch_messages(access_token, folder, top=10):

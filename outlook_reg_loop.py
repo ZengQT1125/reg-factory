@@ -234,13 +234,32 @@ def append_to_emails_pool(email, password):
     token = client_id = "fresh"
     try:
         from extract_graph_tokens import get_graph_token
-        res = get_graph_token(email, password)
+        # 抽取经代理偶发 TLS 抖动(SSLEOFError)，单试一次一抖就回退 fresh、白丢 token 快路；
+        # 这里重试 3 次(短退避)，绝大多数抖动二/三次就过。
+        res = None
+        for _try in range(3):
+            res = get_graph_token(email, password)
+            if res and res.get("refresh_token"):
+                break
+            if _try < 2:
+                # 抽取经代理偶发 TLS 抖动：第 2 次起先切 Clash 节点换出口再试(绕开坏节点)。
+                log(f"graph token 抽取第{_try+1}次未成，切节点重试: {email}", "WARN")
+                try:
+                    from common import proxy_switch as _ps
+                    import random as _rnd
+                    _cur = _ps.current_node()
+                    _cands = [n for n in _ps.concrete_nodes() if n != _cur]
+                    if _cands:
+                        _ps.set_node(_rnd.choice(_cands))
+                except Exception as _e:
+                    log(f"切节点失败(忽略): {str(_e)[:50]}", "WARN")
+                time.sleep(3 * (_try + 1))
         if res and res.get("refresh_token"):
             token = res["refresh_token"]
             client_id = res.get("client_id") or "fresh"
             log(f"graph token extracted for {email}", "OK")
         else:
-            log(f"graph token 抽取失败，回退 fresh: {email}", "WARN")
+            log(f"graph token 抽取失败(3 次)，回退 fresh: {email}", "WARN")
     except Exception as e:
         log(f"graph token 抽取异常，回退 fresh: {type(e).__name__}: {e}", "WARN")
     try:
