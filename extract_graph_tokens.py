@@ -25,10 +25,13 @@ if sys.platform == "win32":
 
 import requests
 
-# Thunderbird client — public, supports personal accounts, IMAP/SMTP
+# Thunderbird client — public, supports personal accounts.
+# 用 Graph Mail.Read 资源域：下游 common/mailbox.get_code_by_token 走 Graph REST
+# (/me/mailFolders/.../messages) 取码，必须拿 graph.microsoft.com 资源的 refresh_token；
+# 之前用 outlook.office.com(IMAP) 资源的 token 无法换 Graph token，取码必失败。
 CLIENT_ID = "9e5f94bc-e8a4-4e73-b8be-63364c29d753"
 REDIRECT_URI = "http://localhost"
-SCOPE = "offline_access https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send"
+SCOPE = "offline_access https://graph.microsoft.com/Mail.Read"
 OUTPUT_DIR = "outlook_accounts"
 
 
