@@ -29,6 +29,21 @@ sys.path.insert(0, WEBUI)
 sys.path.insert(0, ROOT)
 import scripts as schema  # noqa: E402
 
+
+def _ensure_proxy_env():
+    """接码等公网服务直连不通(sms-man 直连超时)，必须经 Clash。把 CLASH_PROXY 注进本进程
+    环境，让 common.sms 的 requests(trust_env) 自动走代理；localhost API 直连(NO_PROXY)。"""
+    proxy = ""
+    try:
+        proxy = _read_config_val("CLASH_PROXY", "http://127.0.0.1:7897")
+    except Exception:
+        proxy = "http://127.0.0.1:7897"
+    if proxy and not os.environ.get("HTTPS_PROXY"):
+        os.environ["HTTP_PROXY"] = os.environ["HTTPS_PROXY"] = proxy
+        os.environ["http_proxy"] = os.environ["https_proxy"] = proxy
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1,localhost,::1"
+
+
 app = FastAPI(title="reg-factory WebUI")
 
 # 运行中的任务：run_id -> {proc, lines:[], done:bool, script, cmd, started}
@@ -168,27 +183,44 @@ def _test_bitbrowser():
     return False, f"连不上 BitBrowser({api})：{last}。确认比特浏览器客户端已启动"
 
 
+def _proxied_get(url, timeout=20):
+    """经 Clash 代理 GET(sms-man/firefox 等公网接码服务直连不通，必须走代理)。
+    返回 (status, body_text)。"""
+    proxy = _read_config_val("CLASH_PROXY", "http://127.0.0.1:7897")
+    handler = urllib.request.ProxyHandler({"http": proxy, "https": proxy}) if proxy else urllib.request.ProxyHandler({})
+    opener = urllib.request.build_opener(handler)
+    with opener.open(url, timeout=timeout) as r:
+        return r.status, r.read(4096).decode("utf-8", "replace")
+
+
 def _test_smsman():
-    """测 sms-man 接码：GET get-balance 带 token，返回余额=token 有效。"""
+    """测 sms-man 接码：经代理查询(直连超时)。get-balance 偶发 500，回退查 applications 验 token。"""
     token = _read_config_val("SMSMAN_TOKEN", "")
     if not token:
         return False, "未配置 SMSMAN_TOKEN"
     base = _read_config_val("SMSMAN_API_BASE", "https://api.sms-man.com/control").rstrip("/")
-    # sms-man 是公网服务，可能要走代理——这里允许走系统代理(用默认 opener)
-    try:
-        req = urllib.request.Request(base + "/get-balance?" + urllib.parse.urlencode({"token": token}))
-        with urllib.request.urlopen(req, timeout=15) as r:
-            body = r.read(2048).decode("utf-8", "replace")
-        import json as _j
-        d = _j.loads(body)
-        if isinstance(d, dict) and ("balance" in d or "money" in d):
-            bal = d.get("balance") or d.get("money")
-            return True, f"sms-man 连通 ✓ 余额 {bal}"
-        if isinstance(d, dict) and (d.get("error_code") or d.get("error_msg")):
-            return False, f"sms-man 返回错误：{d.get('error_msg') or d.get('error_code')}（token 可能无效）"
-        return True, f"sms-man 响应：{str(d)[:80]}"
-    except Exception as e:
-        return False, f"sms-man 请求失败：{str(e)[:80]}"
+    import json as _j
+    last = ""
+    # get-balance 偶发 500/HTML 故障页，回退 applications；都试，识别"服务端故障"
+    for path, pretty in (("get-balance", "balance"), ("applications", "applications")):
+        try:
+            code, body = _proxied_get(base + f"/{path}?" + urllib.parse.urlencode({"token": token}), timeout=18)
+            b = body.lstrip()
+            if b.startswith("<") or "<html" in b[:200].lower():
+                last = f"sms-man 返回错误页(HTTP {code})——平台接口暂时故障/限流，非 token 问题，稍后再试"
+                continue
+            d = _j.loads(body)
+            if path == "get-balance" and isinstance(d, dict) and ("balance" in d or "money" in d):
+                return True, f"sms-man 连通 ✓ 余额 {d.get('balance') or d.get('money')}"
+            if path == "applications":
+                n = len(d) if isinstance(d, (dict, list)) else 0
+                if n and not (isinstance(d, dict) and d.get("error_code")):
+                    return True, f"sms-man 连通 ✓ (token 有效，服务数 {n})"
+            if isinstance(d, dict) and (d.get("error_code") or d.get("error_msg")):
+                return False, f"sms-man token 无效：{d.get('error_msg') or d.get('error_code')}"
+        except Exception as e:
+            last = f"sms-man 请求失败(经代理)：{str(e)[:70]}。确认 Clash 在线"
+    return False, last or "sms-man 无有效响应(平台可能故障,稍后再试)"
 
 
 def _test_firefox():
@@ -198,9 +230,8 @@ def _test_firefox():
         return False, "未配置 SMS_TOKEN"
     base = _read_config_val("SMS_API_BASE", "http://www.firefox.fun/yhapi.ashx")
     try:
-        req = urllib.request.Request(base + "?" + urllib.parse.urlencode({"act": "getuserinfo", "token": token}))
-        with urllib.request.urlopen(req, timeout=15) as r:
-            body = r.read(1024).decode("utf-8", "replace").strip()
+        code, body = _proxied_get(base + "?" + urllib.parse.urlencode({"act": "getuserinfo", "token": token}), timeout=15)
+        body = body.strip()
         # firefox 返回 1|... 表示成功，0|... 表示错误
         if body.startswith("1"):
             return True, f"firefox.fun 连通 ✓ {body[:80]}"
@@ -518,4 +549,5 @@ async def api_stop(run_id: str):
     return {"ok": True}
 
 
+_ensure_proxy_env()
 app.mount("/static", StaticFiles(directory=os.path.join(WEBUI, "static")), name="static")
